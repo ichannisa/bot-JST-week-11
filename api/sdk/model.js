@@ -1,72 +1,42 @@
-var express = require('express');
-var r = express.Router();
+const tf = require('@tensorflow/tfjs-node');
 
-// load pre-trained model
-const model = require('./sdk/model.js');
+function normalized(data){ // i & r
+    i = (data[0] - 12.585) / 6.813882
+    r = (data[1] - 51.4795) / 29.151289
+    return [i, r]
+}
 
-// Bot Setting
-const TelegramBot = require('node-telegram-bot-api');
-const token = '1554577227:AAFj-Np-BITQ-HX_PDSvoosgXl1o6vc9fp4'
-const bot = new TelegramBot(token, {polling: true});
-
-
-// bots
-bot.onText(/\/start/, (msg) => { 
-    console.log(msg)
-    bot.sendMessage(
-        msg.chat.id,
-        `hello ${msg.chat.first_name}, welcome...\n
-        click /predict `
-    );   
-});
+function denormalized(data){
+    v = (data[0] * 552.6264) + 650.4795
+    p = (data[1] * 12153.8) + 10620.5615
+    return [v, p]
+}
 
 
-state = 0;
-bot.onText(/\/predict/, (msg) => { 
-    bot.sendMessage(
-        msg.chat.id,
-        `masukan nilai i|v contohnya 9|9`
-    );   
-    state=1;
-});
+async function predict(data){
+    let in_dim = 2;
+    
+    data = normalized(data);
+    shape = [1, in_dim];
 
+    tf_data = tf.tensor2d(data, shape);
 
-bot.on('message',(msg) => {
-    if(state == 1){
-        s =msg.text.split("|");
-        i = s[0]
-        v = s[1]
-	model.predict(
-	   [
-             parseFloat(s[0]), // string to float
-             parseFloat(s[1])
-	   ]
-	).then((jres)=>{
-	    bot.sendMessage(
-	       msg.chat.id,
-		`nilai v yang diprediksi adalah ${jres[0]} volt`
-	        
-	    );  
-            bot.sendMessage(
-		msg.chat.id,
-		`nilai v yang diprediksi adalah ${jres[1]} watt`
-	    );
-      })               
-    }else{
-        state = 0
+    try{
+        // path load in public access => github
+        const path = 'https://raw.githubusercontent.com/ichannisa/bot-JST-week-11/main/public/ex_model/model.json';
+        const model = await tf.loadGraphModel(path);
+        
+        predict = model.predict(
+                tf_data
+        );
+        result = predict.dataSync();
+        return denormalized( result );
+        
+    }catch(e){
+      console.log(e);
     }
-});
+}
 
-// routers
-r.get('/prediction/:i/:r', function(req, res, next) {    
-    model.predict(
-        [
-            parseFloat(req.params.i), // string to float
-            parseFloat(req.params.r)
-        ]
-    ).then((jres)=>{
-        res.json(jres);
-    })
-});
-
-module.exports = r;
+module.exports = {
+    predict: predict 
+}
